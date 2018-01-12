@@ -34,9 +34,6 @@ public class MinimaxPlayer implements ReversiPlayer {
                 Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, true,
                 MinimaxPlayer::binkleyHeuristic);
         result = (ReversiBoard) minimaxMove.node;
-        if (result != null) {
-            result.swapTurn();
-        }
         return result;
     }
 
@@ -98,6 +95,10 @@ public class MinimaxPlayer implements ReversiPlayer {
             }
         }
         return result + RANDOM.nextGaussian() * noiseStd;
+    }
+
+    @Override
+    public void onGameOver(ReversiBoard board, Color ourColor) {
     }
 
 }

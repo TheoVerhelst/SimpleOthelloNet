@@ -59,8 +59,11 @@ public class UserPlayer implements ReversiPlayer {
                 // continue
             }
         }
-        result.swapTurn();
         return result;
+    }
+
+    @Override
+    public void onGameOver(ReversiBoard board, ReversiBoard.Color ourColor) {
     }
 
 }

@@ -1,5 +1,7 @@
 package simpleothellonet;
 
+import java.util.List;
+import org.neuroph.util.TransferFunctionType;
 import simpleothellonet.ReversiBoard.Color;
 
 /**
@@ -8,31 +10,57 @@ import simpleothellonet.ReversiBoard.Color;
  */
 public class NetworkTrainer {
 
+    private final int numberEpoch;
+    private final int learningGamesPerEpoch;
+    private final int testingGamesPerEpoch;
+    private final TransferFunctionType transferFunction;
+    private final int inputPerCell;
+    private final List<Integer> hiddenLayerSizes;
+    private final double learningRate;
+    private final String networkFilename;
+    private final NeuralNetworkPlayer[] networks;
+
+    public NetworkTrainer(int numberEpoch, int learningGamesPerEpoch,
+            int testingGamesPerEpoch, TransferFunctionType transferFunction,
+            int inputPerCell, List<Integer> hiddenLayerSizes,
+            double learningRate, String networkFilename) {
+        this.numberEpoch = numberEpoch;
+        this.learningGamesPerEpoch = learningGamesPerEpoch;
+        this.testingGamesPerEpoch = testingGamesPerEpoch;
+        this.transferFunction = transferFunction;
+        this.inputPerCell = inputPerCell;
+        this.hiddenLayerSizes = hiddenLayerSizes;
+        this.learningRate = learningRate;
+        this.networkFilename = networkFilename;
+
+        networks = new NeuralNetworkPlayer[]{
+            new NeuralNetworkPlayer(transferFunction, inputPerCell, hiddenLayerSizes, learningRate),
+            new NeuralNetworkPlayer(transferFunction, inputPerCell, hiddenLayerSizes, learningRate)
+        };
+    }
+
     /**
-     * Creates and train two neural network players, and prints the result of
-     * the learning.
+     * Trains two neural network players, and prints the result of the learning.
      */
-    public static void train() {
-        int numberEpoch = 300;
-        int learningGamesPerEpoch = 150;
-        int testingGamesPerEpoch = 50;
+    public void train() {
 
-        NeuralNetworkPlayer network = new NeuralNetworkPlayer("reversi_0_02.nnet", numberEpoch * learningGamesPerEpoch, false);
-        NeuralNetworkPlayer otherNetwork = new NeuralNetworkPlayer("reversi_opponent_0_02.nnet", numberEpoch * learningGamesPerEpoch, false);
-
-        // The output is intended to be used as matlab code
-        System.out.println("learning = [];");
-        System.out.println("testing = [];");
+        for (NeuralNetworkPlayer net : networks) {
+            net.startLearningSession(numberEpoch * learningGamesPerEpoch);
+        }
 
         long averageEpochDuration = 0;
         long epochStart = System.currentTimeMillis();
         for (int epoch = 0; epoch < numberEpoch; epoch++) {
-            System.out.println("learning(end+1) = " + runGames(network, otherNetwork, learningGamesPerEpoch, true) + ";");
-            System.out.println("testing(end+1) = " + runGames(network, new MinimaxPlayer(3), testingGamesPerEpoch, false) + ";");
-            network.saveNetworkToFile();
-            otherNetwork.saveNetworkToFile();
+            double adversarialRate = runGames(networks[0], networks[1], learningGamesPerEpoch, true);
+            double testingRate = runGames(networks[0], new MinimaxPlayer(3), testingGamesPerEpoch, false);
 
-            // Estimate remaining time until end of learning
+            System.out.println(adversarialRate + " " + testingRate);
+
+            for (int i = 0; i < networks.length; ++i) {
+                networks[i].saveNetworkToFile(String.format(networkFilename, i));
+            }
+
+            // Estimate remaining time until end of learning session
             long epochDuration = System.currentTimeMillis() - epochStart;
             epochStart = System.currentTimeMillis();
             averageEpochDuration = ((epoch * averageEpochDuration) + epochDuration) / (epoch + 1);
@@ -43,47 +71,61 @@ public class NetworkTrainer {
         }
     }
 
-    public static void test() {
-        NeuralNetworkPlayer network = new NeuralNetworkPlayer("reversi_0_001.nnet", 0, true);
-        NeuralNetworkPlayer otherNetwork = new NeuralNetworkPlayer("reversi_opponent_0_001.nnet", 0, true);
-        for (int ply = 1; ply < 7; ply++) {
-            System.out.println(ply + " " + runGames(network, new MinimaxPlayer(ply), 100, false) + " " + runGames(otherNetwork, new MinimaxPlayer(ply), 100, false));
+    public void test() {
+        for (int plyDepth = 1; plyDepth < 7; plyDepth++) {
+            double winningRate0 = runGames(networks[0], new MinimaxPlayer(plyDepth), 100, false);
+            double winningRate1 = runGames(networks[1], new MinimaxPlayer(plyDepth), 100, false);
+            System.out.println(plyDepth + " " + winningRate0 + " " + winningRate1);
         }
     }
 
     /**
      * Runs a certain amount of games with the given players.
      *
-     * @param firstPlayer The first player, must be a nnet player.
-     * @param secondPlayer Another player, may be any kind of Reversi player.
+     * @param firstPlayer The first player.
+     * @param secondPlayer Another player.
      * @param iterations The number of games that should be played.
-     * @param learn true if the first player (and the second, if it is also a
-     * nnet) should learn from this game.
+     * @param learnFromTheseGames true if the players should learn from this game,
+     * if they are instances of NeuralNetworkPlayer.
      * @return The winning rate of the first player.
      */
-    private static double runGames(NeuralNetworkPlayer firstPlayer, ReversiPlayer secondPlayer, int iterations, boolean learn) {
+    private double runGames(ReversiPlayer firstPlayer,
+            ReversiPlayer secondPlayer, int iterations, boolean learnFromTheseGames) {
         double winCount = 0;
+        // We alternate the color of the players, so we must keep track of them
         ReversiPlayer[] players = {firstPlayer, secondPlayer};
-        firstPlayer.setLearn(learn);
+        Color[] playerColors = {Color.Black, Color.White};
+
+        for(ReversiPlayer player : players) {
+            if(player instanceof NeuralNetworkPlayer) {
+                ((NeuralNetworkPlayer) player).setLearnFromGame(learnFromTheseGames);
+            }
+        }
 
         for (int count = 0; count < iterations; count++) {
             ReversiBoard board = ReversiBoard.initialBoard();
             ReversiBoard lastBoard = board;
-            int activePlayer = 0;
+            // Determine which player plays first
+            int activePlayer = playerColors[0] == Color.Black ? 0 : 1;
+            board.swapTurn(); // Swap once so that the first turn is still black
 
             while (board != null) {
+                board.swapTurn(); // Here we can swap safely, board is not null
                 lastBoard = board;
                 board = players[activePlayer].playTurn(board);
                 activePlayer = 1 - activePlayer;
             }
 
-            if (learn) {
-                firstPlayer.onGameOver(lastBoard, Color.Black);
-                if (secondPlayer instanceof NeuralNetworkPlayer) {
-                    ((NeuralNetworkPlayer) secondPlayer).onGameOver(lastBoard, Color.White);
+            
+            for(int i = 0; i < players.length; ++i) {
+                players[i].onGameOver(lastBoard, playerColors[i]);
+                if(players[i] instanceof NeuralNetworkPlayer) {
+                    ((NeuralNetworkPlayer) players[i]).setLearnFromGame(learnFromTheseGames);
                 }
+                playerColors[i] = playerColors[i].getOpposite();
             }
-            if (lastBoard.getWinner() == Color.Black) {
+
+            if (lastBoard.getWinner() == playerColors[0]) {
                 winCount += 1;
             }
         }

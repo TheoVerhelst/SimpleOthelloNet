@@ -13,4 +13,7 @@ public interface ReversiPlayer {
      * be over.
      */
     public ReversiBoard playTurn(ReversiBoard board);
+    
+    
+    public void onGameOver(ReversiBoard board, ReversiBoard.Color ourColor);
 }
