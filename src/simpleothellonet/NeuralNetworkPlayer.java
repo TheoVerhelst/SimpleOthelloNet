@@ -14,40 +14,31 @@ import simpleothellonet.ReversiBoard.Color;
 
 /**
  * Main class of this work, this is the implementation of a Reversi player that
- * learn using Temporal Difference Learning (TDL) and a multilayer perceptron.
- * It also uses a linearly decreasing eps-greedy move selection scheme.
+ * learnFromGame using Temporal Difference Learning (TDL) and a multilayer
+ * perceptron. It also uses a linearly decreasing eps-greedy move selection
+ * scheme.
  */
 public class NeuralNetworkPlayer implements ReversiPlayer {
 
     /**
      * The number of inputs of the neural network per grid cell.
      */
-    static final private int INPUT_PER_CELL = 2;
+    int inputPerCell;
 
-    static final private int NUMBER_CELLS = ReversiBoard.getGridSize() * ReversiBoard.getGridSize();
+    final static int NUMBER_CELLS = ReversiBoard.getGridSize() * ReversiBoard.getGridSize();
 
-    static final private int INPUT_SIZE = NUMBER_CELLS * INPUT_PER_CELL;
-
-    /**
-     * The number of neurons in the hidden layer.
-     */
-    static final private int HIDDEN_SIZE = 50;
-
-    /**
-     * Filename to which to save the neural network when the learning is done.
-     */
-    private final String nnetFilename;
+    int inputSize;
 
     /**
      * Instance of the Neuroph neural network
      */
-    private final MultiLayerPerceptron neuralNetwork;
+    private MultiLayerPerceptron neuralNetwork;
 
     /**
      * The learning rule object of the neural network. This is an implementation
      * detail, necessary to perform online learning.
      */
-    private final BackPropagation learning = new BackPropagation();
+    private final BackPropagation learningRule = new BackPropagation();
 
     /**
      * Board state of the previous turn, translated to network input. We need
@@ -58,7 +49,10 @@ public class NeuralNetworkPlayer implements ReversiPlayer {
     /**
      * True if learning should be performed in the current game.
      */
-    private boolean learn = true;
+    private boolean learnFromGame = true;
+
+    private int numberLearningGames;
+    private int learningGameCounter;
 
     /**
      * A random number generator. Used for eps-greedy move selection.
@@ -71,43 +65,46 @@ public class NeuralNetworkPlayer implements ReversiPlayer {
     private final double epsilon_0 = 0.1;
 
     /**
-     * The number of games that will be performed in the current training
-     * session. We need this to linearly decrease epsilon.
-     */
-    private final double numberOfLearningGames;
-
-    /**
-     * A game counter. We need this to linearly decrease epsilon.
-     */
-    private double learningGameCount = 0;
-
-    /**
      * A list of functions that are used to generate symmetries of the board.
      */
     private List<IntUnaryOperator> symmetryMappings;
 
     /**
      * Constructor.
-     *
-     * @param nnetFilename The filename of the file to which save the nnet.
-     * @param numberOfLearningGames The number of games that will be performed
-     * in this learning session.
-     * @param load true to load the nnet from the filename nnetFilename.
      */
-    public NeuralNetworkPlayer(String nnetFilename, int numberOfLearningGames, boolean load) {
-        this.nnetFilename = nnetFilename;
-        this.numberOfLearningGames = numberOfLearningGames;
-        if (load) {
-            System.out.println("Loading nnet from " + nnetFilename);
-            neuralNetwork = (MultiLayerPerceptron) MultiLayerPerceptron.createFromFile(nnetFilename);
-        } else {
-            neuralNetwork = new MultiLayerPerceptron(TransferFunctionType.TANH, INPUT_SIZE, HIDDEN_SIZE, 1);
-            neuralNetwork.randomizeWeights();
-            neuralNetwork.setLearningRule(learning);
-            learning.setBatchMode(false);
-            learning.setLearningRate(0.02);
-        }
+    private NeuralNetworkPlayer() {
         generateSymmetryMappings();
+    }
+
+    public NeuralNetworkPlayer(String nnetFilename) {
+        this();
+        System.out.println("Loading nnet from " + nnetFilename);
+        neuralNetwork = (MultiLayerPerceptron) MultiLayerPerceptron.createFromFile(nnetFilename);
+        inputSize = neuralNetwork.getInputsCount();
+        inputPerCell = inputSize / NUMBER_CELLS;
+    }
+
+    public NeuralNetworkPlayer(TransferFunctionType transferFunction,
+            int inputPerCell, List<Integer> hiddenLayerSizes, double learningRate) {
+        this();
+        // There is only three possible encoding for board input
+        assert (inputPerCell >= 1 && inputPerCell <= 3);
+        this.inputPerCell = inputPerCell;
+        inputSize = NUMBER_CELLS * inputPerCell;
+
+        List<Integer> neuronsInLayers = new ArrayList<>();
+        // Input layer size
+        neuronsInLayers.add(inputSize);
+        // Hidden layer sizes
+        hiddenLayerSizes.stream().forEach(neuronsInLayers::add);
+        // Output layer size
+        neuronsInLayers.add(1);
+
+        neuralNetwork = new MultiLayerPerceptron(neuronsInLayers, transferFunction);
+        neuralNetwork.randomizeWeights();
+        neuralNetwork.setLearningRule(learningRule);
+        learningRule.setBatchMode(false);
+        learningRule.setLearningRate(learningRate);
     }
 
     @Override
@@ -119,7 +116,7 @@ public class NeuralNetworkPlayer implements ReversiPlayer {
         List<Node> children = board.getChildren();
 
         // With probability epsilon, select a random child rather than the best one
-        if (random.nextDouble() <= getEpsilon() && !children.isEmpty() && learn) {
+        if (random.nextDouble() <= getEpsilon() && !children.isEmpty() && learnFromGame) {
             bestBoard = (ReversiBoard) children.get(random.nextInt(children.size()));
             bestValue = evaluateBoard(bestBoard, ourColor);
         } else {
@@ -133,22 +130,24 @@ public class NeuralNetworkPlayer implements ReversiPlayer {
             }
         }
 
-        if (bestBoard != null) {
-            if (learn) {
-                if (previousBoardInput != null) {
-                    // Learn on this prediction, from the previous board (see TD learning)
-                    learnFromBoard(previousBoardInput, bestValue);
-                }
-                previousBoardInput = extractInput(bestBoard, ourColor);
+        if (bestBoard != null && learnFromGame) {
+            if (previousBoardInput != null) {
+                // Learn on this prediction, from the previous board (see TD learning)
+                learnFromBoard(previousBoardInput, bestValue);
             }
-            bestBoard.swapTurn();
+            previousBoardInput = extractInput(bestBoard, ourColor);
         }
 
         return bestBoard;
     }
 
-    public void setLearn(boolean learn) {
-        this.learn = learn;
+    public void setLearnFromGame(boolean learnFromGame) {
+        this.learnFromGame = learnFromGame;
+    }
+
+    public void startLearningSession(int numberLearningGames) {
+        learningGameCounter = 0;
+        this.numberLearningGames = numberLearningGames;
     }
 
     /**
@@ -158,35 +157,37 @@ public class NeuralNetworkPlayer implements ReversiPlayer {
      * @param board The final board.
      * @param ourColor The color of this player.
      */
+    @Override
     public void onGameOver(ReversiBoard board, Color ourColor) {
-        double outcome;
-        Color winner = board.getWinner();
-        if (winner == ourColor) {
-            outcome = 1;
-        } else if (winner == ourColor.getOpposite()) {
-            outcome = -1;
-        } else {
-            outcome = 0;
+        if (learnFromGame) {
+            double outcome;
+            Color winner = board.getWinner();
+            if (winner == ourColor) {
+                outcome = 1;
+            } else if (winner == ourColor.getOpposite()) {
+                outcome = -1;
+            } else {
+                outcome = 0;
+            }
+
+            // Learn on this prediction, from the previous board (see TD learning)
+            learnFromBoard(previousBoardInput, outcome);
+            previousBoardInput = null;
+            learningGameCounter += 1;
         }
-
-        // Learn on this prediction, from the previous board (see TD learning)
-        learnFromBoard(previousBoardInput, outcome);
-        previousBoardInput = null;
-        learningGameCount += 1;
-
     }
 
-    public void saveNetworkToFile() {
+    public void saveNetworkToFile(String nnetFilename) {
         neuralNetwork.save(nnetFilename);
     }
 
     private void learnFromBoard(double[] boardInput, double outcome) {
-        DataSet trainingSet = new DataSet(INPUT_SIZE, 1);
+        DataSet trainingSet = new DataSet(inputSize, 1);
         // Learn from all symmetries of the board.
-        for (double[] symmetry : generateSymmetries(boardInput)) {
+        for (double[] symmetry : generateBoardSymmetries(boardInput)) {
             trainingSet.addRow(new DataSetRow(symmetry, new double[]{outcome}));
         }
-        learning.doOneLearningIteration(trainingSet);
+        learningRule.doOneLearningIteration(trainingSet);
     }
 
     /**
@@ -195,17 +196,30 @@ public class NeuralNetworkPlayer implements ReversiPlayer {
      *
      * @param board The board state.
      * @param ourColor The color of this player on this board.
-     * @return An array of double of size INPUT_SIZE.
+     * @return An array of double of size inputSize.
      */
     private double[] extractInput(ReversiBoard board, Color ourColor) {
         // Create input vector
-        double[] input = new double[INPUT_SIZE];
+        double[] input = new double[inputSize];
         for (int i = 0; i < NUMBER_CELLS; ++i) {
             int row = i / ReversiBoard.getGridSize();
             int col = i % ReversiBoard.getGridSize();
             Color cellValue = board.getValue(col, row);
-            input[i * INPUT_PER_CELL + 0] = (cellValue == ourColor ? 1 : -1);
-            input[i * INPUT_PER_CELL + 1] = (cellValue == ourColor.getOpposite() ? 1 : -1);
+            switch (inputPerCell) {
+                case 1:
+                    input[i * inputPerCell + 0] = (cellValue == null ? 0 : (cellValue == ourColor ? 1 : -1));
+                    break;
+
+                case 2:
+                    input[i * inputPerCell + 0] = (cellValue == ourColor ? 1 : -1);
+                    input[i * inputPerCell + 1] = (cellValue == ourColor.getOpposite() ? 1 : -1);
+                    break;
+
+                case 3:
+                    input[i * inputPerCell + 0] = (cellValue == ourColor ? 1 : -1);
+                    input[i * inputPerCell + 1] = (cellValue == ourColor.getOpposite() ? 1 : -1);
+                    input[i * inputPerCell + 2] = (cellValue == null ? 1 : -1);
+            }
         }
         return input;
     }
@@ -226,7 +240,12 @@ public class NeuralNetworkPlayer implements ReversiPlayer {
      * @return epsilon
      */
     private double getEpsilon() {
-        return epsilon_0 * (1 - (learningGameCount / numberOfLearningGames));
+        double learningSessionProgress = (double) learningGameCounter / numberLearningGames;
+        if (learningSessionProgress >= 1) {
+            return 0;
+        } else {
+            return epsilon_0 * (1 - learningSessionProgress);
+        }
     }
 
     /**
@@ -235,15 +254,15 @@ public class NeuralNetworkPlayer implements ReversiPlayer {
      * @param boardInput The board to reflect along the symmetry axes.
      * @return A list of reflected boards.
      */
-    private List<double[]> generateSymmetries(double[] boardInput) {
+    private List<double[]> generateBoardSymmetries(double[] boardInput) {
         List<double[]> result = new ArrayList<>(symmetryMappings.size() + 1);
         result.add(boardInput);
         for (IntUnaryOperator mapping : symmetryMappings) {
-            double[] symmetry = new double[INPUT_SIZE];
+            double[] symmetry = new double[inputSize];
             for (int i = 0; i < NUMBER_CELLS; ++i) {
-                int inputIdx = i * INPUT_PER_CELL;
-                int mappedIdx = mapping.applyAsInt(i) * INPUT_PER_CELL;
-                for (int j = 0; j < INPUT_PER_CELL; ++j) {
+                int inputIdx = i * inputPerCell;
+                int mappedIdx = mapping.applyAsInt(i) * inputPerCell;
+                for (int j = 0; j < inputPerCell; ++j) {
                     symmetry[inputIdx + j] = boardInput[mappedIdx + j];
                 }
             }
