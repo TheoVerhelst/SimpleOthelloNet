@@ -84,8 +84,11 @@ public class NeuralNetworkPlayer implements ReversiPlayer {
         inputPerCell = inputSize / NUMBER_CELLS;
     }
 
-    public NeuralNetworkPlayer(TransferFunctionType transferFunction,
-            int inputPerCell, List<Integer> hiddenLayerSizes, double learningRate) {
+    public NeuralNetworkPlayer(
+            TransferFunctionType transferFunction,
+            int inputPerCell,
+            List<Integer> hiddenLayerSizes,
+            double learningRate) {
         this();
         // There is only three possible encoding for board input
         assert (inputPerCell >= 1 && inputPerCell <= 3);

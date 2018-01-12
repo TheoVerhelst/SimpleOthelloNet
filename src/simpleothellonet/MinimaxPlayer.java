@@ -2,6 +2,7 @@ package simpleothellonet;
 
 import java.util.List;
 import java.util.Random;
+import java.util.function.ToDoubleFunction;
 import simpleothellonet.ReversiBoard.Color;
 
 /**
@@ -14,6 +15,7 @@ public class MinimaxPlayer implements ReversiPlayer {
      * The depth to which the minimax algorith should explore the game tree.
      */
     private final int plyDepth;
+    private final ToDoubleFunction<Node> heuristic;
 
     private final Minimax minimax = new Minimax();
 
@@ -22,8 +24,9 @@ public class MinimaxPlayer implements ReversiPlayer {
      */
     private static final Random RANDOM = new Random();
 
-    public MinimaxPlayer(int plyDepth) {
+    public MinimaxPlayer(int plyDepth, ToDoubleFunction<Node> heuristic) {
         this.plyDepth = plyDepth;
+        this.heuristic = heuristic;
     }
 
     @Override
@@ -31,8 +34,7 @@ public class MinimaxPlayer implements ReversiPlayer {
         ReversiBoard result;
         List<Node> children = board.getChildren();
         Minimax.Result minimaxMove = minimax.alphaBeta(board, plyDepth,
-                Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, true,
-                MinimaxPlayer::binkleyHeuristic);
+                Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, true, heuristic);
         result = (ReversiBoard) minimaxMove.node;
         return result;
     }
@@ -46,7 +48,7 @@ public class MinimaxPlayer implements ReversiPlayer {
      */
     static public double simpleHeuristic(Node node) {
         ReversiBoard board = (ReversiBoard) node;
-        int gridSize = board.getGridSize();
+        int gridSize = ReversiBoard.getGridSize();
         Color turnColor = board.getTurnColor();
         double count = 0;
         for (int row = 0; row < gridSize; ++row) {
@@ -71,7 +73,7 @@ public class MinimaxPlayer implements ReversiPlayer {
      */
     static public double binkleyHeuristic(Node node) {
         ReversiBoard board = (ReversiBoard) node;
-        int gridSize = board.getGridSize();
+        int gridSize = ReversiBoard.getGridSize();
         Color turnColor = board.getTurnColor();
         double[][] weights = {
             {100, -25, 10, 5, 5, 10, -25, 100},

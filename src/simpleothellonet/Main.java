@@ -20,9 +20,18 @@ public class Main {
         List<Integer> hiddenLayerSizes = Arrays.asList(50);
         double learningRate = 0.02;
         String networkFilename = "othello_%d.nnet";
-        NetworkTrainer trainer = new NetworkTrainer(numberEpoch,
-                learningGamesPerEpoch, testingGamesPerEpoch, transferFunction,
-                inputPerCell, hiddenLayerSizes, learningRate, networkFilename);
+        ReversiPlayer validationOpponent = new MinimaxPlayer(3, MinimaxPlayer::binkleyHeuristic);
+        
+        NetworkTrainer trainer = new NetworkTrainer(
+                numberEpoch,
+                learningGamesPerEpoch,
+                testingGamesPerEpoch,
+                transferFunction,
+                inputPerCell,
+                hiddenLayerSizes,
+                learningRate,
+                networkFilename,
+                validationOpponent);
         
         trainer.train();
         trainer.test();

@@ -19,11 +19,18 @@ public class NetworkTrainer {
     private final double learningRate;
     private final String networkFilename;
     private final NeuralNetworkPlayer[] networks;
+    private final ReversiPlayer validationOpponent;
 
-    public NetworkTrainer(int numberEpoch, int learningGamesPerEpoch,
-            int testingGamesPerEpoch, TransferFunctionType transferFunction,
-            int inputPerCell, List<Integer> hiddenLayerSizes,
-            double learningRate, String networkFilename) {
+    public NetworkTrainer(
+            int numberEpoch,
+            int learningGamesPerEpoch,
+            int testingGamesPerEpoch,
+            TransferFunctionType transferFunction,
+            int inputPerCell,
+            List<Integer> hiddenLayerSizes,
+            double learningRate,
+            String networkFilename,
+            ReversiPlayer validationOpponent) {
         this.numberEpoch = numberEpoch;
         this.learningGamesPerEpoch = learningGamesPerEpoch;
         this.testingGamesPerEpoch = testingGamesPerEpoch;
@@ -32,6 +39,7 @@ public class NetworkTrainer {
         this.hiddenLayerSizes = hiddenLayerSizes;
         this.learningRate = learningRate;
         this.networkFilename = networkFilename;
+        this.validationOpponent = validationOpponent;
 
         networks = new NeuralNetworkPlayer[]{
             new NeuralNetworkPlayer(transferFunction, inputPerCell, hiddenLayerSizes, learningRate),
@@ -52,7 +60,7 @@ public class NetworkTrainer {
         long epochStart = System.currentTimeMillis();
         for (int epoch = 0; epoch < numberEpoch; epoch++) {
             double adversarialRate = runGames(networks[0], networks[1], learningGamesPerEpoch, true);
-            double testingRate = runGames(networks[0], new MinimaxPlayer(3), testingGamesPerEpoch, false);
+            double testingRate = runGames(networks[0], validationOpponent, testingGamesPerEpoch, false);
 
             System.out.println(adversarialRate + " " + testingRate);
 
@@ -73,8 +81,9 @@ public class NetworkTrainer {
 
     public void test() {
         for (int plyDepth = 1; plyDepth < 7; plyDepth++) {
-            double winningRate0 = runGames(networks[0], new MinimaxPlayer(plyDepth), 100, false);
-            double winningRate1 = runGames(networks[1], new MinimaxPlayer(plyDepth), 100, false);
+            ReversiPlayer opponent = new MinimaxPlayer(plyDepth, MinimaxPlayer::binkleyHeuristic);
+            double winningRate0 = runGames(networks[0], opponent, 100, false);
+            double winningRate1 = runGames(networks[1], opponent, 100, false);
             System.out.println(plyDepth + " " + winningRate0 + " " + winningRate1);
         }
     }

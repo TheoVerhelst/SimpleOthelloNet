@@ -90,7 +90,7 @@ public class Minimax {
      */
     static public void testMinimax() {
         ReversiBoard board = ReversiBoard.initialBoard();
-        ReversiPlayer[] players = {new UserPlayer(), new MinimaxPlayer(8)};
+        ReversiPlayer[] players = {new UserPlayer(), new MinimaxPlayer(8, MinimaxPlayer::simpleHeuristic)};
         int activePlayer = 0;
 
         while (board != null) {
