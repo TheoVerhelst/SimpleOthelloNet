@@ -86,22 +86,6 @@ public class Minimax {
     }
 
     /**
-     * Runs a game between the user and a minimax player with ply depth of 8.
-     */
-    static public void testMinimax() {
-        ReversiBoard board = ReversiBoard.initialBoard();
-        ReversiPlayer[] players = {new UserPlayer(), new MinimaxPlayer(8, MinimaxPlayer::simpleHeuristic)};
-        int activePlayer = 0;
-
-        while (board != null) {
-            System.out.println(board);
-            System.out.println("Player " + activePlayer + " turn...");
-            board = players[activePlayer].playTurn(board);
-            activePlayer = 1 - activePlayer;
-        }
-    }
-
-    /**
      * Class containing the result of a minimax search.
      */
     public static class Result {
